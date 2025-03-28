@@ -1,5 +1,3 @@
-# Music Information Retrieval
-
 ---
 title: Relatório de Multimédia
 lang: pt-PT
@@ -10,6 +8,7 @@ author:
   - Pedro Francisco Madureira Garcia Teixeira, nº 2017261525
   - Renato Marques Reis, nº 2022232936
 date: \today
+bibliography: docs/references.bib
 header-includes: |
     \usepackage[utf8]{inputenc}
     \usepackage{fdsymbol}
@@ -21,3 +20,4 @@ header-includes: |
     \makeatother
 ---
 
+# Music Information Retrieval
