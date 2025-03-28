@@ -48,4 +48,6 @@ if __name__ == "__main__":
     plt.figure(), plt.plot(times, sc)
     plt.xlabel('Time (s)')
     plt.title('Spectral Centroid')
+
+    plt.show()
     

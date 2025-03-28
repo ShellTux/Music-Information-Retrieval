@@ -11,6 +11,7 @@
         python = pkgs.python312.withPackages (pp: [
           pp.ipython
           pp.matplotlib
+          pp.numba
           pp.numpy
           pp.scipy
         ]);
@@ -38,6 +39,8 @@
             pkgs.unzip
             pkgs.zip
           ];
+
+          LD_LIBRARY_PATH = "${pkgs.portaudio}/lib";
         };
 
         pedro = pkgs.mkShell {
@@ -54,6 +57,8 @@
             pkgs.texliveFull
           ];
         };
+
+        LD_LIBRARY_PATH = "${pkgs.portaudio}/lib";
       });
     };
 }
