@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 from scipy import stats
 from sys import stderr
 import librosa
@@ -32,6 +33,7 @@ class Song:
         features = Features()
 
         # Extract spectral features
+        # TODO: sr / 2
         features.mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
         features.spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
         features.spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
@@ -40,7 +42,8 @@ class Song:
         features.spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
 
         # Extract temporal features
-        features.f0, _, _ = librosa.pyin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
+        # NOTE: Takes too much time
+        # features.f0, _, _ = librosa.pyin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
         features.rms = librosa.feature.rms(y=y)
         features.zero_crossing_rate = librosa.feature.zero_crossing_rate(y=y)
 
@@ -49,23 +52,31 @@ class Song:
 
         self.features = features
 
-        print(f'Done extracting features for {self.filename}', file=stderr)
-
         return features
 
 class BD:
     songs: list[Song] = []
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: str | Path):
         self.songs = []
 
+        songs_path: list[Path] = []
         for root, _, files in os.walk(directory):
             for file in files:
-                if len(self.songs) >= 3:
-                    break
-
                 if file.endswith('.mp3'):
-                    self.songs.append(Song(os.path.join(root, file)))
+                    songs_path.append(Path(os.path.join(root, file)))
+
+        # songs_path = random.sample(songs_path, 30)
+        songs_path.sort(key=lambda path: (path.parent.name, path.name))
+        # songs_path = songs_path[:30]
+
+        for i, path in enumerate(songs_path):
+            self.songs.append(Song(path))
+            index = i + 1
+            ratio = index / len(songs_path) * 100
+            print(f'\r{index:3} / {len(songs_path)} ({ratio:.2f}%) done. {path}', end='')
+
+        print()
 
     def calculate_statistics(self):
         n_songs = len(self.songs)
@@ -111,6 +122,33 @@ class BD:
 
         return normalized
 
+    def save_features_to_file(self, filename: str | Path):
+        statistics = self.calculate_statistics()
+
+        # Prepare to save minimum and maximum values
+        min_vals = statistics.min(axis=0)
+        max_vals = statistics.max(axis=0)
+
+        # Create the output array with min, max, and feature statistics
+        output_array = np.vstack([min_vals, max_vals, statistics])
+
+        # Save to file
+        # TODO: Remove header
+        np.savetxt(filename, output_array, delimiter=',', header='Min,Max,Mean,Std,Skew,Kurtosis,Median,Max,Min', comments='')
+
+        print(f"Feature statistics saved to {filename}")
+
+    @staticmethod
+    def load_features_from_file(filename: str | Path) -> np.ndarray:
+        data = np.loadtxt(filename, delimiter=',', skiprows=1)
+
+        # Check that we have the expected number of rows
+        if data.shape[0] < 3:
+            raise ValueError("File must contain at least min, max, and one row of statistics.")
+
+        return data[2:, :]
+
+
     def print(self):
         if len(self.songs) == 0:
             print("No songs found.")
@@ -118,5 +156,3 @@ class BD:
             print("List of MP3 Songs:")
             for song in self.songs:
                 print(song.filename)
-
-SONGS = BD(Path('./MER_audio_taffc_dataset'))
