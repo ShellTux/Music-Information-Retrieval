@@ -17,6 +17,7 @@ class Features:
     rms: np.ndarray
     zero_crossing_rate: np.ndarray
     time: np.ndarray
+    tempo: np.ndarray
 
 class Song:
     filename: Path
@@ -33,7 +34,6 @@ class Song:
         features = Features()
 
         # Extract spectral features
-        # TODO: sr / 2
         features.mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
         features.spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
         features.spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
@@ -42,10 +42,15 @@ class Song:
         features.spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
 
         # Extract temporal features
-        # NOTE: Takes too much time
-        # features.f0, _, _ = librosa.pyin(y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'))
+        features.f0 = librosa.yin(y, fmin=20, fmax=sr/2)
+        # Clean F0 values as in mrs.py
+        features.f0[features.f0 == sr/2] = 0
+        
         features.rms = librosa.feature.rms(y=y)
         features.zero_crossing_rate = librosa.feature.zero_crossing_rate(y=y)
+        
+        # Extract tempo
+        features.tempo = librosa.feature.tempo(y=y, sr=sr)
 
         # Get time variable
         features.time = np.arange(len(y)) / sr
@@ -78,76 +83,124 @@ class BD:
 
         print()
 
-    def calculate_statistics(self):
-        n_songs = len(self.songs)
+    def _get_7_stats(self, data_array: np.ndarray) -> np.ndarray:
+        """Helper function to calculate 7 statistics for a given 1D data array."""
+        data_array = np.asarray(data_array).flatten() 
+        if data_array.size == 0:
+            # Return zeros if feature data is empty to maintain array shape
+            # Consider more sophisticated handling if empty arrays are unexpected
+            return np.zeros(7)
+        
+        # Replace NaNs and Infs that might come from librosa features or f0 processing
+        data_array = np.nan_to_num(data_array, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # Define the number of features to store statistics for:
-        n_features = 7  # mean, std, skewness, kurtosis, median, max, min
+        mean = np.mean(data_array)
+        std = np.std(data_array)
+        # Check for constant array before skew/kurtosis to avoid warnings/NaNs
+        if np.all(data_array == data_array[0] if data_array.size > 0 else True):
+            skewness = 0.0
+            kurt = -3.0 # Kurtosis of a constant is typically -3 (normal distribution = 0)
+        else:
+            skewness = stats.skew(data_array)
+            kurt = stats.kurtosis(data_array)
+        median = np.median(data_array)
+        maximum = np.max(data_array)
+        minimum = np.min(data_array)
+        return np.array([mean, std, skewness, kurt, median, maximum, minimum])
 
-        # Create a 2D numpy array
-        stats_array = np.zeros((n_songs, n_features))
+    def calculate_statistics(self) -> np.ndarray:
+        all_song_features_stats = []
 
         for i, song in enumerate(self.songs):
-            f = song.features  # Features for the song
-            feature_data = []
+            f = song.features
+            current_song_stats = []
 
-            # Collect feature data for statistics
-            feature_data.extend(np.mean(f.mfcc, axis=1))  # Mean of MFCC for each coefficient
-            feature_data.append(np.mean(f.spectral_centroid))
-            feature_data.append(np.mean(f.spectral_bandwidth))
-            feature_data.append(np.mean(f.spectral_contrast))
-            feature_data.append(np.mean(f.spectral_flatness))
-            feature_data.append(np.mean(f.spectral_rolloff))
-            feature_data.append(np.mean(f.rms))
-            feature_data.append(np.mean(f.zero_crossing_rate))
+            # MFCC (13 bands) -> 13 * 7 = 91 features
+            for band_idx in range(f.mfcc.shape[0]):
+                current_song_stats.extend(self._get_7_stats(f.mfcc[band_idx, :]))
+            
+            # Spectral Centroid -> 7 features
+            current_song_stats.extend(self._get_7_stats(f.spectral_centroid))
+            
+            # Spectral Bandwidth -> 7 features
+            current_song_stats.extend(self._get_7_stats(f.spectral_bandwidth))
+            
+            # Spectral Contrast (librosa default is 7 rows) -> 7 * 7 = 49 features
+            for band_idx in range(f.spectral_contrast.shape[0]):
+                current_song_stats.extend(self._get_7_stats(f.spectral_contrast[band_idx, :]))
 
-            # Calculate statistics
-            stats_array[i, 0] = np.mean(feature_data)
-            stats_array[i, 1] = np.std(feature_data)
-            stats_array[i, 2] = stats.skew(feature_data)
-            stats_array[i, 3] = stats.kurtosis(feature_data)
-            stats_array[i, 4] = np.median(feature_data)
-            stats_array[i, 5] = np.max(feature_data)
-            stats_array[i, 6] = np.min(feature_data)
+            # Spectral Flatness -> 7 features
+            current_song_stats.extend(self._get_7_stats(f.spectral_flatness))
+            
+            # Spectral Rolloff -> 7 features
+            current_song_stats.extend(self._get_7_stats(f.spectral_rolloff))
+            
+            # F0 -> 7 features
+            current_song_stats.extend(self._get_7_stats(f.f0))
+            
+            # RMS -> 7 features
+            current_song_stats.extend(self._get_7_stats(f.rms))
+            
+            # Zero Crossing Rate -> 7 features
+            current_song_stats.extend(self._get_7_stats(f.zero_crossing_rate))
+            
+            # Tempo -> 1 feature (just the value)
+            # Ensure tempo is a scalar; librosa.feature.tempo returns an array (usually with one element)
+            tempo_value = f.tempo[0] if isinstance(f.tempo, np.ndarray) and f.tempo.size > 0 else (f.tempo if np.isscalar(f.tempo) else 0)
+            current_song_stats.append(tempo_value)
+            
+            all_song_features_stats.append(current_song_stats)
+            
+        return np.array(all_song_features_stats)
 
-        return stats_array
+    def normalize_features(self, statistics: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        min_vals = np.min(statistics, axis=0)
+        max_vals = np.max(statistics, axis=0)
+        
+        # Avoid division by zero: if max == min, feature is constant, normalized value should be 0.
+        # (X - min) / (max - min). If max - min is 0, then X == min, so X - min is 0.
+        # We set denominator to 1 in this case, so 0 / 1 = 0.
+        range_vals = max_vals - min_vals
+        # Create a safe version of range_vals for division
+        # Where range_vals is 0, use 1 to avoid division by zero (numerator will also be 0)
+        # Where range_vals is not 0, use actual range_vals
+        safe_range_vals = np.where(range_vals == 0, 1, range_vals)
+        
+        normalized_statistics = (statistics - min_vals) / safe_range_vals
+        
+        # Ensure any NaNs that might arise (e.g., if a column was all NaNs initially, though _get_7_stats tries to prevent this)
+        # are converted to numbers (e.g., 0).
+        normalized_statistics = np.nan_to_num(normalized_statistics, nan=0.0)
 
-    def normalize_features(self, statistics: np.ndarray) -> np.ndarray:
-        # Normalizing by calculating min and max for the given statistics array
-        min_vals = statistics.min(axis=0)
-        max_vals = statistics.max(axis=0)
-
-        # Normalize each statistic
-        normalized = (statistics - min_vals) / (max_vals - min_vals)
-
-        return normalized
+        return normalized_statistics, min_vals, max_vals
 
     def save_features_to_file(self, filename: str | Path):
-        statistics = self.calculate_statistics()
+        unnormalized_statistics = self.calculate_statistics()
+        
+        if unnormalized_statistics.size == 0:
+            print("No statistics were calculated. Cannot save to file.", file=stderr)
+            return
 
-        # Prepare to save minimum and maximum values
-        min_vals = statistics.min(axis=0)
-        max_vals = statistics.max(axis=0)
+        normalized_stats, min_vals, max_vals = self.normalize_features(unnormalized_statistics)
 
-        # Create the output array with min, max, and feature statistics
-        output_array = np.vstack([min_vals, max_vals, statistics])
+        # Create the output array with min_vals, max_vals, and then normalized feature statistics
+        output_array = np.vstack([min_vals, max_vals, normalized_stats])
 
-        # Save to file
-        # TODO: Remove header
-        np.savetxt(filename, output_array, delimiter=',', header='Min,Max,Mean,Std,Skew,Kurtosis,Median,Max,Min', comments='')
+        # Save to file, without a header, matching mrs.py's typical output for feature files
+        np.savetxt(filename, output_array, delimiter=',', fmt='%.6f', comments='')
 
-        print(f"Feature statistics saved to {filename}")
+        print(f"Feature statistics (min, max, normalized) saved to {filename}")
 
     @staticmethod
     def load_features_from_file(filename: str | Path) -> np.ndarray:
-        data = np.loadtxt(filename, delimiter=',', skiprows=1)
+        data = np.loadtxt(filename, delimiter=',')
 
         # Check that we have the expected number of rows
         if data.shape[0] < 3:
             raise ValueError("File must contain at least min, max, and one row of statistics.")
 
-        return data[2:, :]
-
+        return data # Return all data: min_vals, max_vals, and normalized_stats
+        # The old code returned data[2:,:], which would only be normalized_stats
 
     def print(self):
         if len(self.songs) == 0:
