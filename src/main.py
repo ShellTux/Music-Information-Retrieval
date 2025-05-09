@@ -111,7 +111,7 @@ def main():
     except IndexError:
         print(f"ERRO: O ficheiro {features_path} não parece conter os dados esperados (min, max, stats).")
         return
-    
+
     # Normalizar todas as estatísticas das músicas do dataset
     range_vals_ds = max_vals_dataset - min_vals_dataset
     # Evitar divisão por zero: onde o range é 0, o valor normalizado será 0.
@@ -136,7 +136,7 @@ def main():
     if not song_files_ordered:
         print(f"ERRO: Nenhum ficheiro MP3 encontrado em {data_dir}.")
         return
-    
+
     if len(song_files_ordered) != normalized_stats_all_songs.shape[0]:
         print(f"AVISO: Número de ficheiros MP3 ({len(song_files_ordered)}) não corresponde ao número de registos de estatísticas ({normalized_stats_all_songs.shape[0]}). As recomendações podem estar desalinhadas.")
         # Poderia truncar song_files_ordered para o tamanho de normalized_stats_all_songs se soubermos que é o correto.
@@ -150,7 +150,7 @@ def main():
     if query_song_index >= len(song_files_ordered) or query_song_index >= normalized_stats_all_songs.shape[0]:
         print(f"ERRO: Índice da música query ({query_song_index}) fora dos limites. Certifique-se que tem pelo menos {query_song_index + 1} músicas no dataset.")
         return
-        
+
     query_song_normalized_stats = normalized_stats_all_songs[query_song_index]
     query_song_filename = song_files_ordered[query_song_index]
     print(f"Música Query: {query_song_filename.name}")
@@ -159,7 +159,7 @@ def main():
 
     # 3.2.2. Criar e gravar em ficheiro 3 matrizes de similaridade (vetores de distância)
     num_songs_in_db = normalized_stats_all_songs.shape[0]
-    
+
     distances_euclidean = np.zeros(num_songs_in_db)
     distances_manhattan = np.zeros(num_songs_in_db)
     distances_cosine = np.zeros(num_songs_in_db)
@@ -183,7 +183,7 @@ def main():
     sorted_indices_euclidean = np.argsort(distances_euclidean)
     # Excluir a própria música query (índice 0 do sortido) e pegar as próximas 10
     recommended_indices_euclidean = sorted_indices_euclidean[1 : recommendation_count + 1]
-    
+
     # Ranking Manhattan
     sorted_indices_manhattan = np.argsort(distances_manhattan)
     recommended_indices_manhattan = sorted_indices_manhattan[1 : recommendation_count + 1]
@@ -193,7 +193,7 @@ def main():
     recommended_indices_cosine = sorted_indices_cosine[1 : recommendation_count + 1]
 
     print(f"\nTop {recommendation_count} Recomendações para {query_song_filename.name} (excluindo a própria música):")
-    
+
     print("\nRecomendações - Distância Euclidiana:")
     for i, idx in enumerate(recommended_indices_euclidean):
         if idx < len(song_files_ordered): # Check bounds
@@ -208,14 +208,14 @@ def main():
             print(f"{i+1}. {song_files_ordered[idx].name} (Distância: {distances_manhattan[idx]:.4f})")
         else:
             print(f"{i+1}. Índice {idx} fora dos limites para nomes de ficheiro.")
-            
+
     print("\nRecomendações - Distância Cosseno:")
     for i, idx in enumerate(recommended_indices_cosine):
         if idx < len(song_files_ordered): # Check bounds
             print(f"{i+1}. {song_files_ordered[idx].name} (Distância: {distances_cosine[idx]:.4f})")
         else:
             print(f"{i+1}. Índice {idx} fora dos limites para nomes de ficheiro.")
-            
+
     print("\n--- Alínea 3 Concluída ---")
 
 if __name__ == '__main__':
