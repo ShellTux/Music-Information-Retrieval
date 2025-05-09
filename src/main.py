@@ -39,20 +39,25 @@ def compute_spectral_centroid(y: np.ndarray, sr: int, frame_length_for_fft: int)
 
 def main():
     # --- ALÍNEA 2.1: Feature Extraction and Saving ---
-    songs_bd_instance = None 
+    songs_bd_instance = None # To store the BD instance for later use
     if not os.path.exists(features_path):
         print(f"'{features_path}' not found. Generating features...")
-        songs_bd_instance = BD('./MER_audio_taffc_dataset', extract_features_now=True) 
-        if not songs_bd_instance.songs: # Check if songs were processed for feature extraction
-            print("No songs were successfully processed by BD for feature extraction. Halting.")
+        songs_bd_instance = BD('./MER_audio_taffc_dataset') 
+        if not songs_bd_instance.songs:
+            print("No songs were successfully processed by BD. Halting.")
             return
         songs_bd_instance.save_features_to_file(features_path)
         print(f"Features saved to '{features_path}'")
     else:
         print(f"Using existing features from '{features_path}'")
-        print("Initializing BD to get ordered song list (feature extraction will be skipped)...")
-        songs_bd_instance = BD('./MER_audio_taffc_dataset', extract_features_now=False)
-        if not songs_bd_instance.ordered_song_paths: 
+        # If features exist, we still need the ordered list of song names for consistency
+        # Create a BD instance just to get this list, it won't reprocess songs if only names are needed.
+        # However, to ensure `get_ordered_song_filenames` is populated correctly based on how `features_path`
+        # *would have been* created, we should initialize BD fully.
+        # This assumes that if features_path exists, it was created with the same ordering logic (CSV-based).
+        print("Initializing BD to get ordered song list (even if features file exists)...")
+        songs_bd_instance = BD('./MER_audio_taffc_dataset')
+        if not songs_bd_instance.ordered_song_paths: # Check if paths were determined
             print("Critical: BD instance could not determine ordered song paths. Halting.")
             return
 
@@ -69,143 +74,137 @@ def main():
     # --- ALÍNEA 2.2: Implementação e Avaliação do Centróide Espectral ---
     print("\n--- Iniciando Alínea 2.2: Centróide Espectral ---")
     
-    sc_results_path = 'resultados_metricas_sc.csv'
+    # Parâmetros para o centróide espectral
+    sr_sc = 22050  # Taxa de amostragem consistente com Librosa e o enunciado
+    frame_length_sc = 2048 # Equivalente a 92.88ms @ 22050Hz
+    hop_length_sc = 512    # Equivalente a 23.22ms @ 22050Hz
 
-    if not os.path.exists(sc_results_path):
-        print(f"'{sc_results_path}' not found. Calculating Spectral Centroid metrics...")
-        # Parâmetros para o centróide espectral
-        sr_sc = 22050  
-        frame_length_sc = 2048 
-        hop_length_sc = 512    # Equivalente a 23.22ms @ 22050Hz
+    rmse_values_sc = []
+    pearson_corr_values_sc = []
+    
+    # Usar um número limitado de músicas para o teste do centróide para poupar tempo, e.g., as primeiras 10 ou um subconjunto.
+    # O enunciado menciona "900 músicas" para guardar os resultados das métricas de erro.
+    # Para desenvolvimento/teste rápido, podemos usar um subconjunto.
+    # Vamos usar os caminhos das músicas carregados pela BD para consistência.
+    
+    # Re-initialize BD to get song paths for SC evaluation if not done already or too large
+    # This assumes MER_audio_taffc_dataset contains the audio files.
+    # We need the actual audio data for SC calculation.
+    
+    # Create a new BD instance to get file paths if necessary, or reuse if available and small.
+    # For now, let's assume we need to list some audio files for SC calculation.
+    # A better approach would be to use the song objects from a BD instance if Alínea 2.1 ran.
 
-        rmse_values_sc = []
-        pearson_corr_values_sc = []
-        
-        # Usar um número limitado de músicas para o teste do centróide para poupar tempo, e.g., as primeiras 10 ou um subconjunto.
-        # O enunciado menciona "900 músicas" para guardar os resultados das métricas de erro.
-        # Para desenvolvimento/teste rápido, podemos usar um subconjunto.
-        # Vamos usar os caminhos das músicas carregados pela BD para consistência.
-        
-        # Re-initialize BD to get song paths for SC evaluation if not done already or too large
-        # This assumes MER_audio_taffc_dataset contains the audio files.
-        # We need the actual audio data for SC calculation.
-        
-        # Create a new BD instance to get file paths if necessary, or reuse if available and small.
-        # For now, let's assume we need to list some audio files for SC calculation.
-        # A better approach would be to use the song objects from a BD instance if Alínea 2.1 ran.
+    # Simplified: Iterate through a directory of audios for SC eval
+    # This part should ideally use the file paths from the `songs_bd` object if it was created
+    # and if it's not too large for memory. For now, direct listing for SC:
+    
+    audio_files_for_sc_eval_path = './MER_audio_taffc_dataset' # Corrected to the parent directory
+    
+    # Check if the directory exists
+    if not os.path.isdir(audio_files_for_sc_eval_path):
+        print(f"Warning: Directory for SC evaluation audio files not found: {audio_files_for_sc_eval_path}")
+        print("Skipping Alínea 2.2.2 (SC comparison with Librosa).")
+        # Create dummy results file as per 2.2.3
+        dummy_sc_results = np.zeros((900, 2)) # Assuming 900 songs
+        np.savetxt(
+            'resultados_metricas_sc.csv',
+            dummy_sc_results,
+            delimiter=',',
+            header='RMSE_SC,Pearson_Correlation_SC',
+            comments='',
+            fmt=['%.6f', '%.6f']
+        )
+        print("Created dummy 'resultados_metricas_sc.csv'.")
 
-        # Simplified: Iterate through a directory of audios for SC eval
-        # This part should ideally use the file paths from the `songs_bd` object if it was created
-        # and if it's not too large for memory. For now, direct listing for SC:
+    else:
+        audio_files_list_sc = [os.path.join(dp, f) for dp, dn, filenames in os.walk(audio_files_for_sc_eval_path) for f in filenames if f.endswith('.mp3')]
         
-        audio_files_for_sc_eval_path = './MER_audio_taffc_dataset' # Corrected to the parent directory
-        
-        # Check if the directory exists
-        if not os.path.isdir(audio_files_for_sc_eval_path):
-            print(f"Warning: Directory for SC evaluation audio files not found: {audio_files_for_sc_eval_path}")
-            print("Skipping Alínea 2.2.2 (SC comparison with Librosa).")
-            # Create dummy results file as per 2.2.3
-            dummy_sc_results = np.zeros((900, 2)) # Assuming 900 songs
+        if not audio_files_list_sc:
+            print(f"No MP3 files found in {audio_files_for_sc_eval_path} for SC evaluation.")
+        else:
+            print(f"Evaluating SC for {len(audio_files_list_sc)} files ...")
+            
+            # Limit to 900 files if more are found, or process all if fewer
+            # files_to_process_sc = audio_files_list_sc[:900] if len(audio_files_list_sc) > 900 else audio_files_list_sc
+            # For development, let's process fewer to speed up, e.g., first 5.
+            # User should change this for full run.
+            files_to_process_sc = audio_files_list_sc[:] 
+            print(f"Processing SC for the first {len(files_to_process_sc)} files for speed...")
+
+
+            for audio_file_path in files_to_process_sc:
+                try:
+                    y_sc, sr_loaded = librosa.load(audio_file_path, sr=sr_sc, mono=True)
+                    if sr_loaded != sr_sc:
+                         print(f"Warning: SR mismatch for {audio_file_path}. Expected {sr_sc}, got {sr_loaded}.")
+
+                    # Calcular o centróide espectral com a implementação manual
+                    sc_manual_frames = []
+                    for start in range(0, len(y_sc) - frame_length_sc + 1, hop_length_sc):
+                        frame = y_sc[start : start + frame_length_sc]
+                        if len(frame) == frame_length_sc:
+                             sc_manual_frames.append(compute_spectral_centroid(frame, sr_sc, frame_length_sc))
+                    sc_manual = np.array(sc_manual_frames)
+
+                    # Calcular o centróide espectral usando librosa
+                    sc_librosa_frames = librosa.feature.spectral_centroid(y=y_sc, sr=sr_sc, n_fft=frame_length_sc, hop_length=hop_length_sc)
+                    sc_librosa = sc_librosa_frames.flatten() # Librosa returns (1, T)
+
+                    # Alinhar resultados (Librosa SC often has a 2-frame offset relative to manual STFT)
+                    if len(sc_librosa) > 2:
+                        sc_librosa_aligned = sc_librosa[2:]
+                    else:
+                        sc_librosa_aligned = np.array([]) # Not enough frames from librosa
+
+                    # Ensure sc_manual and sc_librosa_aligned have the same length for comparison
+                    min_len = min(len(sc_manual), len(sc_librosa_aligned))
+                    sc_manual_trimmed = sc_manual[:min_len]
+                    sc_librosa_trimmed = sc_librosa_aligned[:min_len]
+                    
+                    if min_len > 1: # Need at least 2 points for Pearson correlation
+                        rmse_sc = np.sqrt(np.mean((sc_manual_trimmed - sc_librosa_trimmed) ** 2))
+                        pearson_corr_sc, _ = pearsonr(sc_manual_trimmed, sc_librosa_trimmed)
+                        
+                        # Handle NaNs from pearsonr if one vector is constant
+                        if np.isnan(pearson_corr_sc):
+                            pearson_corr_sc = 0.0 # Or 1.0 if perfect match expected for constant
+                    elif min_len == 1 and sc_manual_trimmed[0] == sc_librosa_trimmed[0]:
+                        rmse_sc = 0.0
+                        pearson_corr_sc = 1.0 # Perfect match for single point
+                    elif min_len > 0: # Single point, different values
+                        rmse_sc = np.abs(sc_manual_trimmed[0] - sc_librosa_trimmed[0])
+                        pearson_corr_sc = 0.0 # No correlation definable, or undefined
+                    else: # No comparable frames
+                        rmse_sc = np.nan 
+                        pearson_corr_sc = np.nan
+
+                    rmse_values_sc.append(rmse_sc)
+                    pearson_corr_values_sc.append(pearson_corr_sc)
+
+                except Exception as e_sc:
+                    print(f"Error processing SC for {audio_file_path}: {e_sc}")
+                    rmse_values_sc.append(np.nan)
+                    pearson_corr_values_sc.append(np.nan)
+            
+            # Guardar resultados da avaliação do SC (conforme 2.2.3)
+            # O enunciado pede 900 linhas. Se processamos menos, precisamos preencher.
+            num_results = len(rmse_values_sc)
+            results_array_sc = np.full((900, 2), np.nan) # Initialize with NaN
+            
+            # Fill with actual results
+            actual_results = np.column_stack((rmse_values_sc, pearson_corr_values_sc))
+            results_array_sc[:num_results, :] = actual_results[:num_results, :] # Fill what we have
+            
             np.savetxt(
-                'resultados_metricas_sc.csv',
-                dummy_sc_results,
+                'resultados_metricas_sc.csv', 
+                results_array_sc,
                 delimiter=',',
                 header='RMSE_SC,Pearson_Correlation_SC',
                 comments='',
                 fmt=['%.6f', '%.6f']
             )
-            print("Created dummy 'resultados_metricas_sc.csv'.")
-
-        else:
-            audio_files_list_sc = [os.path.join(dp, f) for dp, dn, filenames in os.walk(audio_files_for_sc_eval_path) for f in filenames if f.endswith('.mp3')]
-            
-            if not audio_files_list_sc:
-                print(f"No MP3 files found in {audio_files_for_sc_eval_path} for SC evaluation.")
-            else:
-                print(f"Evaluating SC for {len(audio_files_list_sc)} files ...")
-                
-                # Limit to 900 files if more are found, or process all if fewer
-                # files_to_process_sc = audio_files_list_sc[:900] if len(audio_files_list_sc) > 900 else audio_files_list_sc
-                # For development, let's process fewer to speed up, e.g., first 5.
-                # User should change this for full run.
-                files_to_process_sc = audio_files_list_sc[:] 
-                print(f"Processing SC for the first {len(files_to_process_sc)} files for speed...")
-
-
-                for audio_file_path in files_to_process_sc:
-                    try:
-                        y_sc, sr_loaded = librosa.load(audio_file_path, sr=sr_sc, mono=True)
-                        if sr_loaded != sr_sc:
-                             print(f"Warning: SR mismatch for {audio_file_path}. Expected {sr_sc}, got {sr_loaded}.")
-
-                        # Calcular o centróide espectral com a implementação manual
-                        sc_manual_frames = []
-                        for start in range(0, len(y_sc) - frame_length_sc + 1, hop_length_sc):
-                            frame = y_sc[start : start + frame_length_sc]
-                            if len(frame) == frame_length_sc:
-                                 sc_manual_frames.append(compute_spectral_centroid(frame, sr_sc, frame_length_sc))
-                        sc_manual = np.array(sc_manual_frames)
-
-                        # Calcular o centróide espectral usando librosa
-                        sc_librosa_frames = librosa.feature.spectral_centroid(y=y_sc, sr=sr_sc, n_fft=frame_length_sc, hop_length=hop_length_sc)
-                        sc_librosa = sc_librosa_frames.flatten() # Librosa returns (1, T)
-
-                        # Alinhar resultados (Librosa SC often has a 2-frame offset relative to manual STFT)
-                        if len(sc_librosa) > 2:
-                            sc_librosa_aligned = sc_librosa[2:]
-                        else:
-                            sc_librosa_aligned = np.array([]) # Not enough frames from librosa
-
-                        # Ensure sc_manual and sc_librosa_aligned have the same length for comparison
-                        min_len = min(len(sc_manual), len(sc_librosa_aligned))
-                        sc_manual_trimmed = sc_manual[:min_len]
-                        sc_librosa_trimmed = sc_librosa_aligned[:min_len]
-                        
-                        if min_len > 1: # Need at least 2 points for Pearson correlation
-                            rmse_sc = np.sqrt(np.mean((sc_manual_trimmed - sc_librosa_trimmed) ** 2))
-                            pearson_corr_sc, _ = pearsonr(sc_manual_trimmed, sc_librosa_trimmed)
-                            
-                            # Handle NaNs from pearsonr if one vector is constant
-                            if np.isnan(pearson_corr_sc):
-                                pearson_corr_sc = 0.0 # Or 1.0 if perfect match expected for constant
-                        elif min_len == 1 and sc_manual_trimmed[0] == sc_librosa_trimmed[0]:
-                            rmse_sc = 0.0
-                            pearson_corr_sc = 1.0 # Perfect match for single point
-                        elif min_len > 0: # Single point, different values
-                            rmse_sc = np.abs(sc_manual_trimmed[0] - sc_librosa_trimmed[0])
-                            pearson_corr_sc = 0.0 # No correlation definable, or undefined
-                        else: # No comparable frames
-                            rmse_sc = np.nan 
-                            pearson_corr_sc = np.nan
-
-                        rmse_values_sc.append(rmse_sc)
-                        pearson_corr_values_sc.append(pearson_corr_sc)
-
-                    except Exception as e_sc:
-                        print(f"Error processing SC for {audio_file_path}: {e_sc}")
-                        rmse_values_sc.append(np.nan)
-                        pearson_corr_values_sc.append(np.nan)
-                
-                # Guardar resultados da avaliação do SC (conforme 2.2.3)
-                # O enunciado pede 900 linhas. Se processamos menos, precisamos preencher.
-                num_results = len(rmse_values_sc)
-                results_array_sc = np.full((900, 2), np.nan) # Initialize with NaN
-                
-                # Fill with actual results
-                actual_results = np.column_stack((rmse_values_sc, pearson_corr_values_sc))
-                results_array_sc[:num_results, :] = actual_results[:num_results, :] # Fill what we have
-                
-                np.savetxt(
-                    'resultados_metricas_sc.csv', 
-                    results_array_sc,
-                    delimiter=',',
-                    header='RMSE_SC,Pearson_Correlation_SC',
-                    comments='',
-                    fmt=['%.6f', '%.6f']
-                )
-                print(f"Resultados da avaliação do Spectral Centroid salvos em '{sc_results_path}'")
-    else:
-        print(f"Skipping Spectral Centroid calculation as '{sc_results_path}' already exists.")
+            print("Resultados da avaliação do Spectral Centroid salvos em 'resultados_metricas_sc.csv'")
 
 
     # --- ALÍNEA 3: Implementação de Métricas de Similaridade ---

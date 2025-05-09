@@ -64,7 +64,7 @@ class BD:
     songs: list[Song] = []
     ordered_song_paths: list[Path] = []
 
-    def __init__(self, directory: str | Path, metadata_filename: str = "panda_dataset_taffc_metadata.csv", extract_features_now: bool = True):
+    def __init__(self, directory: str | Path, metadata_filename: str = "panda_dataset_taffc_metadata.csv"):
         self.songs = []
         self.ordered_song_paths = []
         
@@ -125,35 +125,29 @@ class BD:
              print("No song paths determined (either from CSV or fallback). Cannot proceed.", file=stderr)
              return
 
-        # 4. Process songs in the determined order, only if requested
-        if extract_features_now:
-            print("Starting feature extraction for songs...")
-            total_songs_to_process = len(self.ordered_song_paths)
-            for i, path in enumerate(self.ordered_song_paths):
-                try:
-                    # This is where individual song features are extracted
-                    self.songs.append(Song(path)) 
-                except AssertionError as e: 
-                    print(f"Skipping {path} due to error: {e}", file=stderr)
-                    continue 
-                except Exception as e_song: 
-                    print(f"Error processing song {path}: {e_song}. Skipping.", file=stderr)
-                    continue
+        # 4. Process songs in the determined order
+        total_songs_to_process = len(self.ordered_song_paths)
+        for i, path in enumerate(self.ordered_song_paths):
+            try:
+                self.songs.append(Song(path))
+            except AssertionError as e: # Handles Song(path) failing if file doesn't exist (though map should prevent)
+                print(f"Skipping {path} due to error: {e}", file=stderr)
+                continue # Skip this song and continue with the next
+            except Exception as e_song: # Catch other errors during Song instantiation or feature extraction
+                print(f"Error processing song {path}: {e_song}. Skipping.", file=stderr)
+                continue
 
-                index = i + 1
-                ratio = index / total_songs_to_process * 100 if total_songs_to_process > 0 else 0
-                print(f'{index:3} / {total_songs_to_process} ({ratio:.2f}%) done. {path}', end='')
-            
-            if not self.songs:
-                print("\nWarning: No songs were successfully processed and added to the BD during feature extraction.", file=stderr)
-            elif len(self.songs) < total_songs_to_process:
-                print(f"\nWarning: Processed {len(self.songs)} songs for feature extraction, but expected {total_songs_to_process} based on paths. Some songs may have been skipped due to errors.", file=stderr)
-            print("\nFeature extraction complete.")
-        else:
-            print("Skipping full feature extraction for BD instance as requested (extract_features_now=False).")
-            # self.songs remains empty, but self.ordered_song_paths is populated.
+            index = i + 1
+            ratio = index / total_songs_to_process * 100 if total_songs_to_process > 0 else 0
+            print(f'\r{index:3} / {total_songs_to_process} ({ratio:.2f}%) done. {path}', end='')
+        
+        # Check if any songs were successfully processed
+        if not self.songs:
+            print("\nWarning: No songs were successfully processed and added to the BD.", file=stderr)
+        elif len(self.songs) < total_songs_to_process:
+            print(f"\nWarning: Processed {len(self.songs)} songs, but expected {total_songs_to_process} based on paths. Some songs may have been skipped due to errors.", file=stderr)
 
-        print() # Newline after progress bar or skip message
+        print() # Newline after progress bar
     
     def get_ordered_song_filenames(self) -> list[str]:
         """Returns a list of song filenames (name.ext) in the order they were processed."""
