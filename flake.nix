@@ -38,6 +38,13 @@
             pkgs.texliveFull
             pkgs.unzip
             pkgs.zip
+          ] ++ [
+            pkgs.tinymist
+            pkgs.typst
+            pkgs.typstfmt
+            pkgs.typst-live
+            pkgs.typstwriter
+            pkgs.typstyle
           ];
 
           LD_LIBRARY_PATH = "${pkgs.portaudio}/lib";

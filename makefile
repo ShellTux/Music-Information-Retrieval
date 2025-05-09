@@ -5,8 +5,9 @@ PANDOC_OPTS += --resource-path=docs
 PANDOC_OPTS += --filter=pandoc-include
 PANDOC_OPTS += --citeproc
 
-%.pdf: %.md
-	pandoc $(PANDOC_OPTS) --output=$@ $<
+%.pdf: %.typ
+	# pandoc $(PANDOC_OPTS) --output=$@ $<
+	typst compile $<
 
 $(ARCHIVE): $(REPORT) $(IMAGES)
 	rm --force $@
