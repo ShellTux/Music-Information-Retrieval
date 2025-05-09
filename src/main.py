@@ -39,17 +39,22 @@ def compute_spectral_centroid(y: np.ndarray, sr: int, frame_length_for_fft: int)
 
 def main():
     # --- ALÍNEA 2.1: Feature Extraction and Saving ---
+    songs_bd_instance = None 
     if not os.path.exists(features_path):
         print(f"'{features_path}' not found. Generating features...")
-        # Ensure the directory for MER_audio_taffc_dataset exists or is correctly specified
-        songs_bd = BD('./MER_audio_taffc_dataset') 
-        if not songs_bd.songs:
-            print("No songs found in './MER_audio_taffc_dataset'. Halting.")
+        songs_bd_instance = BD('./MER_audio_taffc_dataset', extract_features_now=True) 
+        if not songs_bd_instance.songs: # Check if songs were processed for feature extraction
+            print("No songs were successfully processed by BD for feature extraction. Halting.")
             return
-        songs_bd.save_features_to_file(features_path)
+        songs_bd_instance.save_features_to_file(features_path)
         print(f"Features saved to '{features_path}'")
     else:
         print(f"Using existing features from '{features_path}'")
+        print("Initializing BD to get ordered song list (feature extraction will be skipped)...")
+        songs_bd_instance = BD('./MER_audio_taffc_dataset', extract_features_now=False)
+        if not songs_bd_instance.ordered_song_paths: 
+            print("Critical: BD instance could not determine ordered song paths. Halting.")
+            return
 
     # Attempt to load the features to check if Alínea 2.1 was successful or if file is usable
     try:
@@ -64,138 +69,143 @@ def main():
     # --- ALÍNEA 2.2: Implementação e Avaliação do Centróide Espectral ---
     print("\n--- Iniciando Alínea 2.2: Centróide Espectral ---")
     
-    # Parâmetros para o centróide espectral
-    sr_sc = 22050  # Taxa de amostragem consistente com Librosa e o enunciado
-    frame_length_sc = 2048 # Equivalente a 92.88ms @ 22050Hz
-    hop_length_sc = 512    # Equivalente a 23.22ms @ 22050Hz
+    sc_results_path = 'resultados_metricas_sc.csv'
 
-    rmse_values_sc = []
-    pearson_corr_values_sc = []
-    
-    # Usar um número limitado de músicas para o teste do centróide para poupar tempo, e.g., as primeiras 10 ou um subconjunto.
-    # O enunciado menciona "900 músicas" para guardar os resultados das métricas de erro.
-    # Para desenvolvimento/teste rápido, podemos usar um subconjunto.
-    # Vamos usar os caminhos das músicas carregados pela BD para consistência.
-    
-    # Re-initialize BD to get song paths for SC evaluation if not done already or too large
-    # This assumes MER_audio_taffc_dataset contains the audio files.
-    # We need the actual audio data for SC calculation.
-    
-    # Create a new BD instance to get file paths if necessary, or reuse if available and small.
-    # For now, let's assume we need to list some audio files for SC calculation.
-    # A better approach would be to use the song objects from a BD instance if Alínea 2.1 ran.
+    if not os.path.exists(sc_results_path):
+        print(f"'{sc_results_path}' not found. Calculating Spectral Centroid metrics...")
+        # Parâmetros para o centróide espectral
+        sr_sc = 22050  
+        frame_length_sc = 2048 
+        hop_length_sc = 512    # Equivalente a 23.22ms @ 22050Hz
 
-    # Simplified: Iterate through a directory of audios for SC eval as in mrs.py
-    # This part should ideally use the file paths from the `songs_bd` object if it was created
-    # and if it's not too large for memory. For now, direct listing for SC:
-    
-    audio_files_for_sc_eval_path = './MER_audio_taffc_dataset' # Corrected to the parent directory
-    
-    # Check if the directory exists
-    if not os.path.isdir(audio_files_for_sc_eval_path):
-        print(f"Warning: Directory for SC evaluation audio files not found: {audio_files_for_sc_eval_path}")
-        print("Skipping Alínea 2.2.2 (SC comparison with Librosa).")
-        # Create dummy results file as per 2.2.3 if required by PDF even if skipped
-        dummy_sc_results = np.zeros((900, 2)) # Assuming 900 songs as per PDF for results file
-        np.savetxt(
-            'resultados_metricas_sc.csv',
-            dummy_sc_results,
-            delimiter=',',
-            header='RMSE_SC,Pearson_Correlation_SC',
-            comments='',
-            fmt=['%.6f', '%.6f']
-        )
-        print("Created dummy 'resultados_metricas_sc.csv'.")
-
-    else:
-        audio_files_list_sc = [os.path.join(dp, f) for dp, dn, filenames in os.walk(audio_files_for_sc_eval_path) for f in filenames if f.endswith('.mp3')]
+        rmse_values_sc = []
+        pearson_corr_values_sc = []
         
-        if not audio_files_list_sc:
-            print(f"No MP3 files found in {audio_files_for_sc_eval_path} for SC evaluation.")
-        else:
-            print(f"Evaluating SC for {len(audio_files_list_sc)} files (or up to 900 as per PDF)...")
-            
-            # Limit to 900 files if more are found, or process all if fewer
-            # files_to_process_sc = audio_files_list_sc[:900] if len(audio_files_list_sc) > 900 else audio_files_list_sc
-            # For development, let's process fewer to speed up, e.g., first 5.
-            # User should change this for full run.
-            files_to_process_sc = audio_files_list_sc[:] 
-            print(f"Processing SC for the first {len(files_to_process_sc)} files for speed...")
+        # Usar um número limitado de músicas para o teste do centróide para poupar tempo, e.g., as primeiras 10 ou um subconjunto.
+        # O enunciado menciona "900 músicas" para guardar os resultados das métricas de erro.
+        # Para desenvolvimento/teste rápido, podemos usar um subconjunto.
+        # Vamos usar os caminhos das músicas carregados pela BD para consistência.
+        
+        # Re-initialize BD to get song paths for SC evaluation if not done already or too large
+        # This assumes MER_audio_taffc_dataset contains the audio files.
+        # We need the actual audio data for SC calculation.
+        
+        # Create a new BD instance to get file paths if necessary, or reuse if available and small.
+        # For now, let's assume we need to list some audio files for SC calculation.
+        # A better approach would be to use the song objects from a BD instance if Alínea 2.1 ran.
 
-
-            for audio_file_path in files_to_process_sc:
-                try:
-                    y_sc, sr_loaded = librosa.load(audio_file_path, sr=sr_sc, mono=True)
-                    if sr_loaded != sr_sc:
-                         print(f"Warning: SR mismatch for {audio_file_path}. Expected {sr_sc}, got {sr_loaded}.")
-
-                    # Calcular o centróide espectral com a implementação manual
-                    sc_manual_frames = []
-                    for start in range(0, len(y_sc) - frame_length_sc + 1, hop_length_sc):
-                        frame = y_sc[start : start + frame_length_sc]
-                        if len(frame) == frame_length_sc:
-                             sc_manual_frames.append(compute_spectral_centroid(frame, sr_sc, frame_length_sc))
-                    sc_manual = np.array(sc_manual_frames)
-
-                    # Calcular o centróide espectral usando librosa
-                    sc_librosa_frames = librosa.feature.spectral_centroid(y=y_sc, sr=sr_sc, n_fft=frame_length_sc, hop_length=hop_length_sc)
-                    sc_librosa = sc_librosa_frames.flatten() # Librosa returns (1, T)
-
-                    # Alinhar resultados (Librosa SC often has a 2-frame offset relative to manual STFT)
-                    # This alignment matches the common observation mentioned in the PDF & mrs.py
-                    if len(sc_librosa) > 2:
-                        sc_librosa_aligned = sc_librosa[2:]
-                    else:
-                        sc_librosa_aligned = np.array([]) # Not enough frames from librosa
-
-                    # Ensure sc_manual and sc_librosa_aligned have the same length for comparison
-                    min_len = min(len(sc_manual), len(sc_librosa_aligned))
-                    sc_manual_trimmed = sc_manual[:min_len]
-                    sc_librosa_trimmed = sc_librosa_aligned[:min_len]
-                    
-                    if min_len > 1: # Need at least 2 points for Pearson correlation
-                        rmse_sc = np.sqrt(np.mean((sc_manual_trimmed - sc_librosa_trimmed) ** 2))
-                        pearson_corr_sc, _ = pearsonr(sc_manual_trimmed, sc_librosa_trimmed)
-                        
-                        # Handle NaNs from pearsonr if one vector is constant
-                        if np.isnan(pearson_corr_sc):
-                            pearson_corr_sc = 0.0 # Or 1.0 if perfect match expected for constant
-                    elif min_len == 1 and sc_manual_trimmed[0] == sc_librosa_trimmed[0]:
-                        rmse_sc = 0.0
-                        pearson_corr_sc = 1.0 # Perfect match for single point
-                    elif min_len > 0: # Single point, different values
-                        rmse_sc = np.abs(sc_manual_trimmed[0] - sc_librosa_trimmed[0])
-                        pearson_corr_sc = 0.0 # No correlation definable, or undefined
-                    else: # No comparable frames
-                        rmse_sc = np.nan 
-                        pearson_corr_sc = np.nan
-
-                    rmse_values_sc.append(rmse_sc)
-                    pearson_corr_values_sc.append(pearson_corr_sc)
-
-                except Exception as e_sc:
-                    print(f"Error processing SC for {audio_file_path}: {e_sc}")
-                    rmse_values_sc.append(np.nan)
-                    pearson_corr_values_sc.append(np.nan)
-            
-            # Guardar resultados da avaliação do SC (conforme 2.2.3)
-            # O enunciado pede 900 linhas. Se processamos menos, precisamos preencher.
-            num_results = len(rmse_values_sc)
-            results_array_sc = np.full((900, 2), np.nan) # Initialize with NaN
-            
-            # Fill with actual results
-            actual_results = np.column_stack((rmse_values_sc, pearson_corr_values_sc))
-            results_array_sc[:num_results, :] = actual_results[:num_results, :] # Fill what we have
-            
+        # Simplified: Iterate through a directory of audios for SC eval
+        # This part should ideally use the file paths from the `songs_bd` object if it was created
+        # and if it's not too large for memory. For now, direct listing for SC:
+        
+        audio_files_for_sc_eval_path = './MER_audio_taffc_dataset' # Corrected to the parent directory
+        
+        # Check if the directory exists
+        if not os.path.isdir(audio_files_for_sc_eval_path):
+            print(f"Warning: Directory for SC evaluation audio files not found: {audio_files_for_sc_eval_path}")
+            print("Skipping Alínea 2.2.2 (SC comparison with Librosa).")
+            # Create dummy results file as per 2.2.3
+            dummy_sc_results = np.zeros((900, 2)) # Assuming 900 songs
             np.savetxt(
-                'resultados_metricas_sc.csv', # Nome do ficheiro conforme PDF (inferido)
-                results_array_sc,
+                'resultados_metricas_sc.csv',
+                dummy_sc_results,
                 delimiter=',',
-                header='RMSE_SC,Pearson_Correlation_SC', # Header conforme PDF
+                header='RMSE_SC,Pearson_Correlation_SC',
                 comments='',
                 fmt=['%.6f', '%.6f']
             )
-            print("Resultados da avaliação do Spectral Centroid salvos em 'resultados_metricas_sc.csv'")
+            print("Created dummy 'resultados_metricas_sc.csv'.")
+
+        else:
+            audio_files_list_sc = [os.path.join(dp, f) for dp, dn, filenames in os.walk(audio_files_for_sc_eval_path) for f in filenames if f.endswith('.mp3')]
+            
+            if not audio_files_list_sc:
+                print(f"No MP3 files found in {audio_files_for_sc_eval_path} for SC evaluation.")
+            else:
+                print(f"Evaluating SC for {len(audio_files_list_sc)} files ...")
+                
+                # Limit to 900 files if more are found, or process all if fewer
+                # files_to_process_sc = audio_files_list_sc[:900] if len(audio_files_list_sc) > 900 else audio_files_list_sc
+                # For development, let's process fewer to speed up, e.g., first 5.
+                # User should change this for full run.
+                files_to_process_sc = audio_files_list_sc[:] 
+                print(f"Processing SC for the first {len(files_to_process_sc)} files for speed...")
+
+
+                for audio_file_path in files_to_process_sc:
+                    try:
+                        y_sc, sr_loaded = librosa.load(audio_file_path, sr=sr_sc, mono=True)
+                        if sr_loaded != sr_sc:
+                             print(f"Warning: SR mismatch for {audio_file_path}. Expected {sr_sc}, got {sr_loaded}.")
+
+                        # Calcular o centróide espectral com a implementação manual
+                        sc_manual_frames = []
+                        for start in range(0, len(y_sc) - frame_length_sc + 1, hop_length_sc):
+                            frame = y_sc[start : start + frame_length_sc]
+                            if len(frame) == frame_length_sc:
+                                 sc_manual_frames.append(compute_spectral_centroid(frame, sr_sc, frame_length_sc))
+                        sc_manual = np.array(sc_manual_frames)
+
+                        # Calcular o centróide espectral usando librosa
+                        sc_librosa_frames = librosa.feature.spectral_centroid(y=y_sc, sr=sr_sc, n_fft=frame_length_sc, hop_length=hop_length_sc)
+                        sc_librosa = sc_librosa_frames.flatten() # Librosa returns (1, T)
+
+                        # Alinhar resultados (Librosa SC often has a 2-frame offset relative to manual STFT)
+                        if len(sc_librosa) > 2:
+                            sc_librosa_aligned = sc_librosa[2:]
+                        else:
+                            sc_librosa_aligned = np.array([]) # Not enough frames from librosa
+
+                        # Ensure sc_manual and sc_librosa_aligned have the same length for comparison
+                        min_len = min(len(sc_manual), len(sc_librosa_aligned))
+                        sc_manual_trimmed = sc_manual[:min_len]
+                        sc_librosa_trimmed = sc_librosa_aligned[:min_len]
+                        
+                        if min_len > 1: # Need at least 2 points for Pearson correlation
+                            rmse_sc = np.sqrt(np.mean((sc_manual_trimmed - sc_librosa_trimmed) ** 2))
+                            pearson_corr_sc, _ = pearsonr(sc_manual_trimmed, sc_librosa_trimmed)
+                            
+                            # Handle NaNs from pearsonr if one vector is constant
+                            if np.isnan(pearson_corr_sc):
+                                pearson_corr_sc = 0.0 # Or 1.0 if perfect match expected for constant
+                        elif min_len == 1 and sc_manual_trimmed[0] == sc_librosa_trimmed[0]:
+                            rmse_sc = 0.0
+                            pearson_corr_sc = 1.0 # Perfect match for single point
+                        elif min_len > 0: # Single point, different values
+                            rmse_sc = np.abs(sc_manual_trimmed[0] - sc_librosa_trimmed[0])
+                            pearson_corr_sc = 0.0 # No correlation definable, or undefined
+                        else: # No comparable frames
+                            rmse_sc = np.nan 
+                            pearson_corr_sc = np.nan
+
+                        rmse_values_sc.append(rmse_sc)
+                        pearson_corr_values_sc.append(pearson_corr_sc)
+
+                    except Exception as e_sc:
+                        print(f"Error processing SC for {audio_file_path}: {e_sc}")
+                        rmse_values_sc.append(np.nan)
+                        pearson_corr_values_sc.append(np.nan)
+                
+                # Guardar resultados da avaliação do SC (conforme 2.2.3)
+                # O enunciado pede 900 linhas. Se processamos menos, precisamos preencher.
+                num_results = len(rmse_values_sc)
+                results_array_sc = np.full((900, 2), np.nan) # Initialize with NaN
+                
+                # Fill with actual results
+                actual_results = np.column_stack((rmse_values_sc, pearson_corr_values_sc))
+                results_array_sc[:num_results, :] = actual_results[:num_results, :] # Fill what we have
+                
+                np.savetxt(
+                    'resultados_metricas_sc.csv', 
+                    results_array_sc,
+                    delimiter=',',
+                    header='RMSE_SC,Pearson_Correlation_SC',
+                    comments='',
+                    fmt=['%.6f', '%.6f']
+                )
+                print(f"Resultados da avaliação do Spectral Centroid salvos em '{sc_results_path}'")
+    else:
+        print(f"Skipping Spectral Centroid calculation as '{sc_results_path}' already exists.")
 
 
     # --- ALÍNEA 3: Implementação de Métricas de Similaridade ---
@@ -223,45 +233,54 @@ def main():
         print(f"AVISO: Esperava 190 features normalizadas, mas encontrei {normalized_stats_all_songs.shape[1]}. As recomendações podem estar incorretas.")
 
 
-    # Obter a lista ordenada de ficheiros de música (para mapear índices para nomes)
-    # Esta lógica deve corresponder à da classe BD em common.py
-    song_files_ordered = []
-    data_dir_songs = './MER_audio_taffc_dataset' # Diretório das músicas (o mesmo usado pela classe BD)
-    # Check if data_dir_songs exists
-    if not os.path.isdir(data_dir_songs):
-        print(f"ERRO: Diretório de músicas '{data_dir_songs}' não encontrado. Não é possível mapear features para nomes de músicas.")
-        return
+    # Obter a lista ordenada de NOMES de ficheiros de música (para mapear índices para nomes)
+    # Esta lógica agora usa o método da classe BD para garantir consistência com a ordem de features_statistics.csv
+    if songs_bd_instance is None:
+        # This case should ideally not be hit if the logic above is correct
+        print("Error: songs_bd_instance not initialized. Re-initializing to get song order.")
+        songs_bd_instance = BD('./MER_audio_taffc_dataset')
+        if not songs_bd_instance.ordered_song_paths:
+             print("Critical: BD instance could not determine ordered song paths after re-init. Halting.")
+             return
 
-    for root_dir, _, files_in_dir in os.walk(data_dir_songs):
-        for file_item in files_in_dir:
-            if file_item.endswith('.mp3'):
-                song_files_ordered.append(Path(os.path.join(root_dir, file_item)))
-    song_files_ordered.sort(key=lambda p: (p.parent.name, p.name))
+    song_filenames_ordered = songs_bd_instance.get_ordered_song_filenames()
 
-    if not song_files_ordered:
-        print(f"ERRO: Nenhum ficheiro MP3 encontrado em {data_dir_songs}.")
+    # Convert Path objects from songs_bd_instance.ordered_song_paths to full string paths for other uses if needed
+    # For rankings, we just need the names. For query song filename, we need the full path to find its index.
+    # ordered_full_song_paths = [str(p) for p in songs_bd_instance.ordered_song_paths]
+
+    if not song_filenames_ordered:
+        print(f"ERRO: Nenhum nome de ficheiro MP3 obtido da instância BD. Verifique a inicialização da BD e o dataset.")
         return
     
-    if len(song_files_ordered) != normalized_stats_all_songs.shape[0]:
-        print(f"AVISO: Número de ficheiros MP3 ({len(song_files_ordered)}) não corresponde ao número de registos de estatísticas ({normalized_stats_all_songs.shape[0]}). As recomendações podem estar desalinhadas.")
-        # Poderia truncar song_files_ordered para o tamanho de normalized_stats_all_songs se soubermos que é o correto.
-        # Ou parar se for um erro crítico. Por agora, apenas um aviso.
-        if not normalized_stats_all_songs.any(): # No stats loaded
+    # Check consistency between number of songs in features and number of song names
+    if len(song_filenames_ordered) != normalized_stats_all_songs.shape[0]:
+        print(f"AVISO: Número de nomes de ficheiros ({len(song_filenames_ordered)}) não corresponde ao número de registos de estatísticas ({normalized_stats_all_songs.shape[0]}). As recomendações podem estar desalinhadas.")
+        # Potentially truncate or error out based on severity. For now, a warning.
+        if not normalized_stats_all_songs.any(): 
              print("Abortando devido à falta de estatísticas.")
              return
 
-    # 3.2.1. Para a query: Selecionar uma música query (ex: a primeira da lista)
-    query_song_index = 27 # O enunciado refere-se a MT0000414517.mp3. O índice pode variar.
-                          # Para validação, usar o índice que corresponde à query dos ficheiros de validação.
-                          # Se song_files_ordered[28] é a query correta, ótimo.
-    
-    if query_song_index >= normalized_stats_all_songs.shape[0]:
-        print(f"ERRO: Índice da música query ({query_song_index}) fora dos limites ({normalized_stats_all_songs.shape[0]} músicas no dataset).")
+    # 3.2.1. Para a query: Selecionar uma música query
+    # We need to find the index of the query song (e.g., "MT0000414517.mp3") in our `song_filenames_ordered` list
+    query_song_target_name = "MT0000414517.mp3"
+    query_song_index = -1
+    try:
+        query_song_index = song_filenames_ordered.index(query_song_target_name)
+    except ValueError:
+        print(f"ERRO: A música query '{query_song_target_name}' não foi encontrada na lista de músicas ordenadas do dataset.")
+        print(f"Verifique o nome do ficheiro e se está presente no ficheiro de metadados e no dataset.")
+        print(f"Primeiros ficheiros na lista ordenada: {song_filenames_ordered[:5]}")
+        return
+
+    if query_song_index >= normalized_stats_all_songs.shape[0]: # Should be caught by ValueError mostly
+        print(f"ERRO: Índice da música query ({query_song_index} para '{query_song_target_name}') fora dos limites ({normalized_stats_all_songs.shape[0]} músicas no dataset).")
         return
         
     query_song_normalized_stats = normalized_stats_all_songs[query_song_index]
-    query_song_filename = song_files_ordered[query_song_index]
-    print(f"Música Query: {query_song_filename.name}")
+    # query_song_filename now refers to just the name, e.g., "MT0000414517.mp3"
+    query_song_filename_for_print = song_filenames_ordered[query_song_index] 
+    print(f"Música Query: {query_song_filename_for_print}")
 
     # 3.1. Métricas de similaridade já estão disponíveis em scipy.spatial.distance
 
@@ -279,28 +298,22 @@ def main():
         distances_cosine[i] = distance.cosine(query_song_normalized_stats, db_song_normalized_stats) # 1 - similaridade cosseno
 
     # Guardar as matrizes de similaridade (vetores de distância)
-    np.savetxt('similarity_euclidean.csv', distances_euclidean.reshape(-1, 1), delimiter=',', header='EuclideanDistance', comments='', fmt='%.6f')
-    np.savetxt('similarity_manhattan.csv', distances_manhattan.reshape(-1, 1), delimiter=',', header='ManhattanDistance', comments='', fmt='%.6f')
-    np.savetxt('similarity_cosine.csv', distances_cosine.reshape(-1, 1), delimiter=',', header='CosineDistance', comments='', fmt='%.6f')
+    np.savetxt('similarity_euclidean.csv', distances_euclidean.reshape(-1, 1), delimiter=',', comments='', fmt='%.6f')
+    np.savetxt('similarity_manhattan.csv', distances_manhattan.reshape(-1, 1), delimiter=',', comments='', fmt='%.6f')
+    np.savetxt('similarity_cosine.csv', distances_cosine.reshape(-1, 1), delimiter=',', comments='', fmt='%.6f')
     print("Matrizes de similaridade (vetores de distância) guardadas em .csv")
 
     # 3.3. Para a query, criar os 3 rankings de similaridade (top 10)
-    recommendation_count = 10 # Conforme PDF
+    recommendation_count = 10
 
-    # --- Helper para guardar rankings no formato do mrs.py (song_name,distance) ---
     def save_ranking_csv(filename, song_names_all_dataset, sorted_indices, distances, num_recommendations):
         # sorted_indices[0] é a própria query. Queremos top 10 *outras* musicas.
-        # mrs.py inclui a query no ranking_*.csv (top 11 total)
-        # O PDF diz "10 recomendações". Vamos seguir mrs.py para validação (top 11 incluindo query)
         
-        # Take top (num_recommendations + 1) to include the query itself if it's [0]
-        # mrs.py outputs 11 items (query + 10 recommendations)
         
         # Indices of query + top 10 recommendations
         ranked_indices_to_save = sorted_indices[:num_recommendations + 1] 
         
         with open(filename, 'w', encoding='utf-8') as f_rank:
-            # f_rank.write("Song,Distance\n") # mrs.py não tem header nestes CSVs
             for i, idx in enumerate(ranked_indices_to_save):
                 if idx < len(song_names_all_dataset):
                     song_name = song_names_all_dataset[idx] # Should be just the filename e.g. "MTxxxx.mp3"
@@ -310,28 +323,28 @@ def main():
                     print(f"Warning: Index {idx} out of bounds for song_names_all_dataset when saving {filename}")
 
     # Obter nomes de ficheiros para os rankings (apenas o nome do ficheiro, não o caminho completo)
-    song_filenames_ordered_for_ranking = [p.name for p in song_files_ordered]
-
+    # song_filenames_ordered_for_ranking = [p.name for p in song_files_ordered] # Old way
+    # song_filenames_ordered já contém os nomes corretos na ordem correta
 
     # Ranking Euclidiano
     sorted_indices_euclidean = np.argsort(distances_euclidean)
-    save_ranking_csv('ranking_euclidean.csv', song_filenames_ordered_for_ranking, sorted_indices_euclidean, distances_euclidean, recommendation_count)
+    save_ranking_csv('ranking_euclidean.csv', song_filenames_ordered, sorted_indices_euclidean, distances_euclidean, recommendation_count)
     recommended_indices_euclidean = sorted_indices_euclidean[1 : recommendation_count + 1] # Top 10 excluding query
 
     # Ranking Manhattan
     sorted_indices_manhattan = np.argsort(distances_manhattan)
-    save_ranking_csv('ranking_manhattan.csv', song_filenames_ordered_for_ranking, sorted_indices_manhattan, distances_manhattan, recommendation_count)
+    save_ranking_csv('ranking_manhattan.csv', song_filenames_ordered, sorted_indices_manhattan, distances_manhattan, recommendation_count)
     recommended_indices_manhattan = sorted_indices_manhattan[1 : recommendation_count + 1] # Top 10 excluding query
 
     # Ranking Cosseno
     sorted_indices_cosine = np.argsort(distances_cosine)
-    save_ranking_csv('ranking_cosine.csv', song_filenames_ordered_for_ranking, sorted_indices_cosine, distances_cosine, recommendation_count)
+    save_ranking_csv('ranking_cosine.csv', song_filenames_ordered, sorted_indices_cosine, distances_cosine, recommendation_count)
     recommended_indices_cosine = sorted_indices_cosine[1 : recommendation_count + 1] # Top 10 excluding query
     
     print("Rankings (top 10 + query) guardados em ranking_*.csv")
 
 
-    print(f"\nTop {recommendation_count} Recomendações para {query_song_filename.name} (excluindo a própria música):")
+    print(f"\nTop {recommendation_count} Recomendações para {query_song_filename_for_print} (excluindo a própria música):")
     
     # Para formatação igual ao ficheiro de validação
     # Guardar nomes e distâncias para impressão posterior no formato do ficheiro de validação
@@ -341,14 +354,14 @@ def main():
     recommended_distances_euclidean_values = []
     # Incluir a própria música query para corresponder ao formato de saida do ficheiro de validação
     # A query song é sorted_indices_euclidean[0]
-    if sorted_indices_euclidean[0] < len(song_files_ordered):
-        recommended_filenames_euclidean.append(song_files_ordered[sorted_indices_euclidean[0]].name)
+    if sorted_indices_euclidean[0] < len(song_filenames_ordered):
+        recommended_filenames_euclidean.append(song_filenames_ordered[sorted_indices_euclidean[0]])
         recommended_distances_euclidean_values.append(distances_euclidean[sorted_indices_euclidean[0]])
         
     for idx in recommended_indices_euclidean: # Top 10, excluindo query
-        if idx < len(song_files_ordered):
-            print(f"{len(recommended_filenames_euclidean)}. {song_files_ordered[idx].name} (Distância: {distances_euclidean[idx]:.4f})")
-            recommended_filenames_euclidean.append(song_files_ordered[idx].name)
+        if idx < len(song_filenames_ordered):
+            print(f"{len(recommended_filenames_euclidean)}. {song_filenames_ordered[idx]} (Distância: {distances_euclidean[idx]:.4f})")
+            recommended_filenames_euclidean.append(song_filenames_ordered[idx])
             recommended_distances_euclidean_values.append(distances_euclidean[idx])
         else:
             print(f"{len(recommended_filenames_euclidean)}. Índice {idx} fora dos limites para nomes de ficheiro.")
@@ -356,14 +369,14 @@ def main():
     print("\nRecomendações - Distância Manhattan:")
     recommended_filenames_manhattan = []
     recommended_distances_manhattan_values = []
-    if sorted_indices_manhattan[0] < len(song_files_ordered):
-        recommended_filenames_manhattan.append(song_files_ordered[sorted_indices_manhattan[0]].name)
+    if sorted_indices_manhattan[0] < len(song_filenames_ordered):
+        recommended_filenames_manhattan.append(song_filenames_ordered[sorted_indices_manhattan[0]])
         recommended_distances_manhattan_values.append(distances_manhattan[sorted_indices_manhattan[0]])
 
     for idx in recommended_indices_manhattan: # Top 10, excluindo query
-        if idx < len(song_files_ordered):
-            print(f"{len(recommended_filenames_manhattan)}. {song_files_ordered[idx].name} (Distância: {distances_manhattan[idx]:.4f})")
-            recommended_filenames_manhattan.append(song_files_ordered[idx].name)
+        if idx < len(song_filenames_ordered):
+            print(f"{len(recommended_filenames_manhattan)}. {song_filenames_ordered[idx]} (Distância: {distances_manhattan[idx]:.4f})")
+            recommended_filenames_manhattan.append(song_filenames_ordered[idx])
             recommended_distances_manhattan_values.append(distances_manhattan[idx])
         else:
             print(f"{len(recommended_filenames_manhattan)}. Índice {idx} fora dos limites para nomes de ficheiro.")
@@ -371,14 +384,14 @@ def main():
     print("\nRecomendações - Distância Cosseno:")
     recommended_filenames_cosine = []
     recommended_distances_cosine_values = []
-    if sorted_indices_cosine[0] < len(song_files_ordered):
-        recommended_filenames_cosine.append(song_files_ordered[sorted_indices_cosine[0]].name)
+    if sorted_indices_cosine[0] < len(song_filenames_ordered):
+        recommended_filenames_cosine.append(song_filenames_ordered[sorted_indices_cosine[0]])
         recommended_distances_cosine_values.append(distances_cosine[sorted_indices_cosine[0]])
 
     for idx in recommended_indices_cosine: # Top 10, excluindo query
-        if idx < len(song_files_ordered):
-            print(f"{len(recommended_filenames_cosine)}. {song_files_ordered[idx].name} (Distância: {distances_cosine[idx]:.4f})")
-            recommended_filenames_cosine.append(song_files_ordered[idx].name)
+        if idx < len(song_filenames_ordered):
+            print(f"{len(recommended_filenames_cosine)}. {song_filenames_ordered[idx]} (Distância: {distances_cosine[idx]:.4f})")
+            recommended_filenames_cosine.append(song_filenames_ordered[idx])
             recommended_distances_cosine_values.append(distances_cosine[idx])
         else:
             print(f"{len(recommended_filenames_cosine)}. Índice {idx} fora dos limites para nomes de ficheiro.")
@@ -404,9 +417,9 @@ def main():
     metadata_df = metadata_df.set_index('Song')
 
     # 4.1.1 Obter metadados da música query
-    query_song_id_stem = query_song_filename.stem # ex: "MT0000414517"
+    query_song_id_stem = Path(query_song_filename_for_print).stem
     if query_song_id_stem not in metadata_df.index:
-        print(f"ERRO: Metadados para a música query '{query_song_filename.name}' não encontrados no ficheiro CSV.")
+        print(f"ERRO: Metadados para a música query '{query_song_filename_for_print}' (ID: {query_song_id_stem}) não encontrados no ficheiro CSV.")
         return
     query_metadata = metadata_df.loc[query_song_id_stem]
 
@@ -432,16 +445,16 @@ def main():
 
     metadata_similarity_scores = np.zeros(num_songs_in_db)
     for i in range(num_songs_in_db):
-        target_song_id_stem = song_files_ordered[i].stem
+        target_song_id_stem = Path(song_filenames_ordered[i]).stem
         if target_song_id_stem in metadata_df.index:
             target_metadata = metadata_df.loc[target_song_id_stem]
             metadata_similarity_scores[i] = get_metadata_similarity_score(query_metadata, target_metadata)
         else:
-            # print(f"AVISO: Metadados para '{song_files_ordered[i].name}' não encontrados. Score será 0.")
+            # print(f"AVISO: Metadados para '{song_filenames_ordered[i]}' não encontrados. Score será 0.")
             metadata_similarity_scores[i] = 0 # Ou outra estratégia
 
     # Guardar a matriz de similaridade baseada em contexto
-    np.savetxt('similarity_metadata.csv', metadata_similarity_scores.reshape(-1, 1), delimiter=',', header='MetadataScore', comments='', fmt='%d')
+    np.savetxt('similarity_metadata.csv', metadata_similarity_scores.reshape(-1, 1), delimiter=',', comments='', fmt='%d')
     print("Matriz de similaridade por metadados guardada em 'similarity_metadata.csv'")
 
     # Obter ranking por metadados (top 10 + query, ou top 11 para display)
@@ -452,8 +465,8 @@ def main():
     num_recommendations_display_metadata = recommendation_count + 1 
     recommended_indices_metadata_display = sorted_indices_metadata[:num_recommendations_display_metadata]
     
-    recommended_filenames_metadata = [song_files_ordered[idx].name for idx in recommended_indices_metadata_display if idx < len(song_files_ordered)]
-    recommended_scores_metadata = [metadata_similarity_scores[idx] for idx in recommended_indices_metadata_display if idx < len(song_files_ordered)]
+    recommended_filenames_metadata = [song_filenames_ordered[idx] for idx in recommended_indices_metadata_display if idx < len(song_filenames_ordered)]
+    recommended_scores_metadata = [metadata_similarity_scores[idx] for idx in recommended_indices_metadata_display if idx < len(song_filenames_ordered)]
 
     # Para cálculo da precisão, consideramos as top 10 *outras* músicas
     # (excluindo a própria query song que estaria em sorted_indices_metadata[0])

@@ -5,6 +5,7 @@ from sys import stderr
 import librosa
 import numpy as np
 import os
+import pandas as pd
 
 class Features:
     mfcc: np.ndarray
@@ -43,7 +44,7 @@ class Song:
 
         # Extract temporal features
         features.f0 = librosa.yin(y, fmin=20, fmax=sr/2)
-        # Clean F0 values as in mrs.py
+        # Clean F0 values
         features.f0[features.f0 == sr/2] = 0
         
         features.rms = librosa.feature.rms(y=y)
@@ -61,27 +62,102 @@ class Song:
 
 class BD:
     songs: list[Song] = []
+    ordered_song_paths: list[Path] = []
 
-    def __init__(self, directory: str | Path):
+    def __init__(self, directory: str | Path, metadata_filename: str = "panda_dataset_taffc_metadata.csv", extract_features_now: bool = True):
         self.songs = []
+        self.ordered_song_paths = []
+        
+        base_dir = Path(directory)
+        metadata_path = base_dir / metadata_filename
 
-        songs_path: list[Path] = []
-        for root, _, files in os.walk(directory):
+        # 1. Scan all MP3s and map song ID (stem) to full path
+        all_mp3_files_map: dict[str, Path] = {}
+        for root, _, files in os.walk(base_dir):
             for file in files:
                 if file.endswith('.mp3'):
-                    songs_path.append(Path(os.path.join(root, file)))
+                    p = Path(os.path.join(root, file))
+                    all_mp3_files_map[p.stem] = p
+        
+        if not all_mp3_files_map:
+            print(f"No .mp3 files found in {base_dir} and its subdirectories.", file=stderr)
+            return
 
-        # songs_path = random.sample(songs_path, 30)
-        songs_path.sort(key=lambda path: (path.parent.name, path.name))
-        # songs_path = songs_path[:30]
+        # 2. Read metadata CSV
+        try:
+            metadata_df = pd.read_csv(metadata_path)
+        except FileNotFoundError:
+            print(f"Metadata file not found: {metadata_path}", file=stderr)
+            print("Falling back to filesystem scan order (parent_dir, filename).", file=stderr)
+            # Fallback to old behavior if metadata is missing
+            fallback_paths: list[Path] = []
+            for root, _, files in os.walk(base_dir):
+                for file in files:
+                    if file.endswith('.mp3'):
+                        fallback_paths.append(Path(os.path.join(root, file)))
+            fallback_paths.sort(key=lambda path: (path.parent.name, path.name))
+            self.ordered_song_paths = fallback_paths
+        else:
+            # 3. Build ordered song list based on CSV
+            if 'Song' not in metadata_df.columns:
+                print(f"Critical: 'Song' column not found in {metadata_path}.", file=stderr)
+                print("Falling back to filesystem scan order (parent_dir, filename).", file=stderr)
+                # Fallback to old behavior
+                fallback_paths: list[Path] = []
+                for root, _, files in os.walk(base_dir):
+                    for file in files:
+                        if file.endswith('.mp3'):
+                            fallback_paths.append(Path(os.path.join(root, file)))
+                fallback_paths.sort(key=lambda path: (path.parent.name, path.name))
+                self.ordered_song_paths = fallback_paths
+            else:
+                processed_paths_in_csv_order: list[Path] = []
+                print(f"Reading song order from metadata file: {metadata_path}")
+                for song_id_from_csv in metadata_df['Song']:
+                    song_id_stem = str(song_id_from_csv).strip()
+                    if song_id_stem in all_mp3_files_map:
+                        processed_paths_in_csv_order.append(all_mp3_files_map[song_id_stem])
+                    else:
+                        print(f"Warning: Song ID '{song_id_stem}' from metadata not found in MP3 files. Skipping.", file=stderr)
+                self.ordered_song_paths = processed_paths_in_csv_order
+        
+        if not self.ordered_song_paths:
+             print("No song paths determined (either from CSV or fallback). Cannot proceed.", file=stderr)
+             return
 
-        for i, path in enumerate(songs_path):
-            self.songs.append(Song(path))
-            index = i + 1
-            ratio = index / len(songs_path) * 100
-            print(f'\r{index:3} / {len(songs_path)} ({ratio:.2f}%) done. {path}', end='')
+        # 4. Process songs in the determined order, only if requested
+        if extract_features_now:
+            print("Starting feature extraction for songs...")
+            total_songs_to_process = len(self.ordered_song_paths)
+            for i, path in enumerate(self.ordered_song_paths):
+                try:
+                    # This is where individual song features are extracted
+                    self.songs.append(Song(path)) 
+                except AssertionError as e: 
+                    print(f"Skipping {path} due to error: {e}", file=stderr)
+                    continue 
+                except Exception as e_song: 
+                    print(f"Error processing song {path}: {e_song}. Skipping.", file=stderr)
+                    continue
 
-        print()
+                index = i + 1
+                ratio = index / total_songs_to_process * 100 if total_songs_to_process > 0 else 0
+                print(f'{index:3} / {total_songs_to_process} ({ratio:.2f}%) done. {path}', end='')
+            
+            if not self.songs:
+                print("\nWarning: No songs were successfully processed and added to the BD during feature extraction.", file=stderr)
+            elif len(self.songs) < total_songs_to_process:
+                print(f"\nWarning: Processed {len(self.songs)} songs for feature extraction, but expected {total_songs_to_process} based on paths. Some songs may have been skipped due to errors.", file=stderr)
+            print("\nFeature extraction complete.")
+        else:
+            print("Skipping full feature extraction for BD instance as requested (extract_features_now=False).")
+            # self.songs remains empty, but self.ordered_song_paths is populated.
+
+        print() # Newline after progress bar or skip message
+    
+    def get_ordered_song_filenames(self) -> list[str]:
+        """Returns a list of song filenames (name.ext) in the order they were processed."""
+        return [p.name for p in self.ordered_song_paths if p is not None] # Ensure path is not None
 
     def _get_7_stats(self, data_array: np.ndarray) -> np.ndarray:
         """Helper function to calculate 7 statistics for a given 1D data array."""
@@ -186,7 +262,7 @@ class BD:
         # Create the output array with min_vals, max_vals, and then normalized feature statistics
         output_array = np.vstack([min_vals, max_vals, normalized_stats])
 
-        # Save to file, without a header, matching mrs.py's typical output for feature files
+        # Save to file, without a header
         np.savetxt(filename, output_array, delimiter=',', fmt='%.6f', comments='')
 
         print(f"Feature statistics (min, max, normalized) saved to {filename}")
