@@ -62,6 +62,13 @@
             pkgs.pandoc
             pkgs.pandoc-include
             pkgs.texliveFull
+          ] ++ [
+            pkgs.tinymist
+            pkgs.typst
+            pkgs.typstfmt
+            pkgs.typst-live
+            pkgs.typstwriter
+            pkgs.typstyle
           ];
         };
 
