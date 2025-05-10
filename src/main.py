@@ -87,7 +87,7 @@ def main():
         if not os.path.isdir(audio_files_for_sc_eval_path):
             print(f"Aviso: Diretório para ficheiros de áudio de avaliação SC não encontrado: {audio_files_for_sc_eval_path}")
             print("A ignorar Secção 2.2.2 (comparação SC com Librosa).")
-            # Criar ficheiro de resultados fictício conforme 2.2.3
+            # Criar ficheiro de resultados fictício
             dummy_sc_results = np.zeros((900, 2)) # Assumindo 900 músicas
             np.savetxt(
                 sc_results_path,
@@ -193,8 +193,7 @@ def main():
                         rmse_values_sc.append(np.nan)
                         pearson_corr_values_sc.append(np.nan)
                 
-                # Guardar resultados da avaliação SC (conforme 2.2.3)
-                # Os requisitos especificam 900 linhas. Se processámos menos, precisamos de preencher o resto.
+                # Guardar resultados da avaliação SC
                 num_results = len(rmse_values_sc)
                 results_array_sc = np.full((900, 2), np.nan) # Inicializar com NaN
                 
@@ -341,7 +340,7 @@ def main():
     print(f"\nTop {recommendation_count} Recomendações para {query_song_filename_for_print} (excluindo a própria música):")
     
     # Para formatação semelhante ao ficheiro de validação
-    # Guardar nomes e distâncias para impressão posterior no formato do ficheiro de validação
+    # Guardar nomes e distâncias para impressão
     
     print("\nRecomendações - Distância Euclidiana:")
     recommended_filenames_euclidean = []
@@ -454,7 +453,7 @@ def main():
     # Scores são "quanto maior, melhor"
     sorted_indices_metadata = np.argsort(metadata_similarity_scores)[::-1] 
     
-    # Para exibição, seguindo o formato do ficheiro de validação (parece ter 11 músicas)
+    # Para exibição
     num_recommendations_display_metadata = recommendation_count + 1 
     recommended_indices_metadata_display = sorted_indices_metadata[:num_recommendations_display_metadata]
     
@@ -481,7 +480,7 @@ def main():
     precision_manhattan = len(set(recommended_indices_manhattan).intersection(relevant_set_for_precision)) / recommendation_count
     precision_cosine = len(set(recommended_indices_cosine).intersection(relevant_set_for_precision)) / recommendation_count
 
-    # Apresentar resultados no formato do ficheiro de validação
+    # Apresentar resultados
     output_txt_filename = "rankings_and_precision_output.txt"
     with open(output_txt_filename, 'w', encoding='utf-8') as f_out:
         print("\n\n- Rankings:", file=f_out)
