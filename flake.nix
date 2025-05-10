@@ -34,6 +34,7 @@
             pkgs.pandoc
             pkgs.pandoc-include
             pkgs.parallel
+            pkgs.pigz
             pkgs.qiv
             pkgs.texliveFull
             pkgs.unzip
@@ -61,6 +62,7 @@
             pkgs.gnumake
             pkgs.pandoc
             pkgs.pandoc-include
+            pkgs.pigz
             pkgs.texliveFull
           ] ++ [
             pkgs.tinymist

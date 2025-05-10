@@ -290,3 +290,5 @@ $RECYCLE.BIN/
 .direnv
 *.pdf
 /*.csv
+/*.zip
+/files.txt
