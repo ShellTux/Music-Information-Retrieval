@@ -64,7 +64,7 @@ class BD:
     songs: list[Song] = []
     ordered_song_paths: list[Path] = []
 
-    def __init__(self, directory: str | Path, metadata_filename: str = "panda_dataset_taffc_metadata.csv"):
+    def __init__(self, directory: str | Path, metadata_filename: str = "panda_dataset_taffc_metadata.csv", load_features_only: bool = False):
         self.songs = []
         self.ordered_song_paths = []
         
@@ -125,29 +125,30 @@ class BD:
              print("No song paths determined (either from CSV or fallback). Cannot proceed.", file=stderr)
              return
 
-        # 4. Process songs in the determined order
-        total_songs_to_process = len(self.ordered_song_paths)
-        for i, path in enumerate(self.ordered_song_paths):
-            try:
-                self.songs.append(Song(path))
-            except AssertionError as e: # Handles Song(path) failing if file doesn't exist (though map should prevent)
-                print(f"Skipping {path} due to error: {e}", file=stderr)
-                continue # Skip this song and continue with the next
-            except Exception as e_song: # Catch other errors during Song instantiation or feature extraction
-                print(f"Error processing song {path}: {e_song}. Skipping.", file=stderr)
-                continue
+        # 4. Process songs in the determined order (only if not in load_features_only mode)
+        if not load_features_only:
+            total_songs_to_process = len(self.ordered_song_paths)
+            for i, path in enumerate(self.ordered_song_paths):
+                try:
+                    self.songs.append(Song(path))
+                except AssertionError as e:
+                    print(f"Skipping {path} due to error: {e}", file=stderr)
+                    continue # Skip this song and continue with the next
+                except Exception as e_song:
+                    print(f"Error processing song {path}: {e_song}. Skipping.", file=stderr)
+                    continue
 
-            index = i + 1
-            ratio = index / total_songs_to_process * 100 if total_songs_to_process > 0 else 0
-            print(f'\r{index:3} / {total_songs_to_process} ({ratio:.2f}%) done. {path}', end='')
-        
-        # Check if any songs were successfully processed
-        if not self.songs:
-            print("\nWarning: No songs were successfully processed and added to the BD.", file=stderr)
-        elif len(self.songs) < total_songs_to_process:
-            print(f"\nWarning: Processed {len(self.songs)} songs, but expected {total_songs_to_process} based on paths. Some songs may have been skipped due to errors.", file=stderr)
+                index = i + 1
+                ratio = index / total_songs_to_process * 100 if total_songs_to_process > 0 else 0
+                print(f'\r{index:3} / {total_songs_to_process} ({ratio:.2f}%) done. {path}', end='')
+            
+            # Check if any songs were successfully processed
+            if not self.songs:
+                print("\nWarning: No songs were successfully processed and added to the BD.", file=stderr)
+            elif len(self.songs) < total_songs_to_process:
+                print(f"\nWarning: Processed {len(self.songs)} songs, but expected {total_songs_to_process} based on paths. Some songs may have been skipped due to errors.", file=stderr)
 
-        print() # Newline after progress bar
+            print() # Newline after progress bar
     
     def get_ordered_song_filenames(self) -> list[str]:
         """Returns a list of song filenames (name.ext) in the order they were processed."""
@@ -158,7 +159,6 @@ class BD:
         data_array = np.asarray(data_array).flatten() 
         if data_array.size == 0:
             # Return zeros if feature data is empty to maintain array shape
-            # Consider more sophisticated handling if empty arrays are unexpected
             return np.zeros(7)
         
         # Replace NaNs and Infs that might come from librosa features or f0 processing
@@ -227,19 +227,15 @@ class BD:
         min_vals = np.min(statistics, axis=0)
         max_vals = np.max(statistics, axis=0)
         
-        # Avoid division by zero: if max == min, feature is constant, normalized value should be 0.
-        # (X - min) / (max - min). If max - min is 0, then X == min, so X - min is 0.
-        # We set denominator to 1 in this case, so 0 / 1 = 0.
+        # Avoid division by zero: if max == min, feature is constant, normalized value should be 0
         range_vals = max_vals - min_vals
         # Create a safe version of range_vals for division
         # Where range_vals is 0, use 1 to avoid division by zero (numerator will also be 0)
-        # Where range_vals is not 0, use actual range_vals
         safe_range_vals = np.where(range_vals == 0, 1, range_vals)
         
         normalized_statistics = (statistics - min_vals) / safe_range_vals
         
-        # Ensure any NaNs that might arise (e.g., if a column was all NaNs initially, though _get_7_stats tries to prevent this)
-        # are converted to numbers (e.g., 0).
+        # Ensure any NaNs are converted to numbers (e.g., 0)
         normalized_statistics = np.nan_to_num(normalized_statistics, nan=0.0)
 
         return normalized_statistics, min_vals, max_vals
@@ -270,7 +266,6 @@ class BD:
             raise ValueError("File must contain at least min, max, and one row of statistics.")
 
         return data # Return all data: min_vals, max_vals, and normalized_stats
-        # The old code returned data[2:,:], which would only be normalized_stats
 
     def print(self):
         if len(self.songs) == 0:
